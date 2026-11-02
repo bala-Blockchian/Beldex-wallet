@@ -12,9 +12,12 @@ export default function ReceiveModal({
   onClose
 }: ReceiveModalProps) {
   return (
+
     <Modal title="Receive BDX" onClose={onClose}>
+
       <div className="receive-content">
         <div className="qr-container">
+
           <QRCodeSVG
             value={address}
             size={220}
@@ -22,6 +25,7 @@ export default function ReceiveModal({
             bgColor="#ffffff"
             fgColor="#071018"
           />
+          
         </div>
 
         <p className="modal-copy">

@@ -22,7 +22,8 @@ export default function Modal({
       }
     }
 
-    const previousOverflow = document.body.style.overflow
+    const previousOverflow = document.body.style.overflow 
+    
     document.body.style.overflow = 'hidden'
     document.addEventListener('keydown', handleKeyDown)
 

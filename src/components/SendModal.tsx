@@ -8,7 +8,7 @@ interface SendModalProps {
   credential: WalletCredential
   balanceAtomic: bigint | null
   onClose: () => void
-  onSuccess: (result: SendResult) => void
+  onSuccess: (result: SendResult, amountAtomic: bigint) => void
 }
 
 export default function SendModal({
@@ -64,7 +64,7 @@ export default function SendModal({
       )
 
       setLoading(false)
-      onSuccess(result) //reverting the results 
+      onSuccess(result, atomic)
 
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))

@@ -144,6 +144,7 @@ export default function App() {
                 <label className="field-label" htmlFor="wallet-mnemonic">
                   Seed phrase
                 </label>
+                
                 <textarea
                   id="wallet-mnemonic"
                   className="text-input seed-input"

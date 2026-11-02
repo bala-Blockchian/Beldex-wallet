@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { SavedWallet, WalletCredential } from '../lib/api'
 import { atomicToBdx, shortHash } from '../lib/format'
 import {
-  balanceFromUnspent,
-  fetchAddressTxs,
-  fetchUnspent,
-  loginToLws,
+  fetchWalletActivity,
   type LwsAddressTx,
   type SendResult
 } from '../lib/lws'
@@ -24,10 +21,14 @@ export default function Dashboard({
   wallet,
   credential,
   onNewWallet
+
 }: DashboardProps) {
   //done
   const [balanceAtomic, setBalanceAtomic] = useState<bigint | null>(null)
   const [transactions, setTransactions] = useState<LwsAddressTx[]>([])
+  const [pendingTransactions, setPendingTransactions] = useState<
+    LwsAddressTx[]
+  >([])
 
   const [loading, setLoading] = useState(true) // done
   const [error, setError] = useState<string | null>(null)
@@ -35,20 +36,13 @@ export default function Dashboard({
   const [receiveOpen, setReceiveOpen] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
-  //runs when ever the credentiols changes
   const loadActivity = useCallback(async () => {
     try {
-      await loginToLws(credential) //login with the credentials
+      const activity = await fetchWalletActivity(credential) //updates function
 
-      const [unspent, addressTxs] = await Promise.all([
-        //call both the functions
-        fetchUnspent(credential),
-        fetchAddressTxs(credential)
-      ])
-
-      setBalanceAtomic(balanceFromUnspent(unspent)) //set the balance of the wallet
-      setTransactions(addressTxs.transactions ?? []) //gets the array of txs
-
+      setBalanceAtomic(activity.balanceAtomic)
+      setTransactions(activity.transactions)
+      
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
     } finally {
@@ -56,25 +50,132 @@ export default function Dashboard({
     }
   }, [credential])
 
-  //on mounting it runs the loadActivity function
   useEffect(() => {
-    void loadActivity()
+    void loadActivity() // oxlint-disable-line react/set-state-in-effect
   }, [loadActivity])
 
-  //done
+  //continuesly updates the pending tx array
+  useEffect(() => {
+    if (pendingTransactions.length === 0) {
+      return
+    }
+
+    let cancelled = false
+    let timer: number | undefined
+    let attempts = 0
+    const maxAttempts = 20
+    const intervalMs = 3000
+
+    const poll = async () => {
+      if (cancelled) {
+        return
+      }
+
+      attempts += 1
+
+      try {
+        const activity = await fetchWalletActivity(credential, {
+          login: false
+        })
+
+        if (cancelled) {
+          return
+        }
+
+        setBalanceAtomic(activity.balanceAtomic)
+        setTransactions(activity.transactions)
+        //done
+
+        //tx hash that is indexed mean they have the tx hash 
+        const indexedHashes = new Set(
+          activity.transactions
+            .map(transaction => transaction.hash)
+            .filter((hash): hash is string => Boolean(hash))
+        )
+
+        //if the pending tx hash present in the indexed hash
+        const allIndexed = pendingTransactions.every(
+          transaction =>
+            transaction.hash !== undefined &&
+            indexedHashes.has(transaction.hash)
+        )
+
+        // updates the pending tx array, the tx that does not have the hash or not present in the indexedHashes
+        if (allIndexed) {
+          setPendingTransactions(previous =>
+            previous.filter(transaction => {
+              return (
+                transaction.hash === undefined ||
+                !indexedHashes.has(transaction.hash)
+              )
+            })
+          )
+          return
+        }
+
+      } catch {
+        // Keep polling; a later attempt may succeed.
+      }
+
+      if (!cancelled && attempts < maxAttempts) {
+        timer = window.setTimeout(() => void poll(), intervalMs)
+      }
+    }
+
+    timer = window.setTimeout(() => void poll(), 1500)
+
+    return () => {
+      cancelled = true
+      if (timer !== undefined) {
+        window.clearTimeout(timer)
+      }
+    }
+  }, [credential, pendingTransactions]) //done
+
+  //returns both the pending tx and the indexed txs
+  const visibleTransactions = useMemo(() => {
+    //by checking the indexed and pending tx and it return both the tx as the array
+    const indexedHashes = new Set(
+      transactions
+        .map(transaction => transaction.hash)
+        .filter((hash): hash is string => Boolean(hash))
+    )
+
+    const pendingOnly = pendingTransactions.filter(
+      transaction =>
+        transaction.hash === undefined || !indexedHashes.has(transaction.hash)
+    )
+
+    return [...pendingOnly, ...transactions]
+
+  }, [pendingTransactions, transactions])
+
   function refreshActivity() {
-    setLoading(true) //leading for the balance 
+    setLoading(true) 
     setError(null)
 
     void loadActivity()
   }
 
-  function handleSendSuccess(result: SendResult) {
+  // on sending the tx
+  function handleSendSuccess(result: SendResult, amountAtomic: bigint) {
     setSendOpen(false)
 
     setSuccessMessage(
-      `Transaction submitted successfully. Hash: ${shortHash(result.tx_hash)}`
+      `Transaction submitted successfully. Hash: ${shortHash(result.tx_hash)}. Waiting for the network to index it.`
     )
+
+    setPendingTransactions(previous => [
+      {
+        hash: result.tx_hash,
+        timestamp: new Date().toISOString(),
+        total_received: '0',
+        total_sent: amountAtomic.toString(),
+        mempool: true
+      },
+      ...previous.filter(transaction => transaction.hash !== result.tx_hash)  //prevents the duplicates
+    ])
+
     refreshActivity()
   }
 
@@ -83,35 +184,29 @@ export default function Dashboard({
       <header className="dashboard-header">
         <div>
           <p className="eyebrow">Active wallet</p>
-          {/* wallet name  */}
-          <h1>{wallet.label}</h1> 
-        </div> 
-        <button type="button" className="ghost-button" onClick={onNewWallet}> 
-          {/* creats the new wallet */}
+          <h1>{wallet.label}</h1>
+        </div>
+
+        <button type="button" className="ghost-button" onClick={onNewWallet}>
           New wallet
         </button>
-      </header>
 
+      </header>
       <section className="balance-card">
         <div>
           <span className="field-label">Available balance</span>
-
           <p className="balance-value">
-            {/* done */}
-            {balanceAtomic === null ? '—' : atomicToBdx(balanceAtomic)} 
+            {balanceAtomic === null ? '—' : atomicToBdx(balanceAtomic)}
             <span className="balance-unit">BDX</span>
           </p>
-
         </div>
-        {/* done */}
         {loading && <span className="spinner" aria-label="Refreshing balance" />}
       </section>
 
       <section className="address-card">
         <div className="address-head">
           <span className="field-label">Wallet address</span>
-          {/* done */}
-          <CopyButton value={credential.address} label="Copy address" /> 
+          <CopyButton value={credential.address} label="Copy address" />
         </div>
         <code className="address-text">{credential.address}</code>
       </section>
@@ -119,6 +214,7 @@ export default function Dashboard({
       {successMessage && (
         <div className="success-banner" role="status">
           <span>{successMessage}</span>
+
           <button
             type="button"
             className="banner-dismiss"
@@ -126,6 +222,7 @@ export default function Dashboard({
           >
             Dismiss
           </button>
+
         </div>
       )}
 
@@ -137,7 +234,6 @@ export default function Dashboard({
       )}
 
       <div className="action-bar">
-        {/* for the send */}
         <button
           type="button"
           className="action-button send-action"
@@ -145,7 +241,7 @@ export default function Dashboard({
         >
           Send
         </button>
-        {/* for the receive */}
+
         <button
           type="button"
           className="action-button receive-action"
@@ -153,6 +249,7 @@ export default function Dashboard({
         >
           Receive
         </button>
+
       </div>
 
       <section className="transactions-section">
@@ -165,29 +262,28 @@ export default function Dashboard({
           <button
             type="button"
             className="ghost-button"
-            // to get the new tx 
-            onClick={refreshActivity} 
+            onClick={refreshActivity}
             disabled={loading}
           >
             {loading ? 'Refreshing...' : 'Refresh'}
           </button>
 
         </div>
-        {/* todo : look into it */}
+
         <TransactionList
-          transactions={transactions}
+          transactions={visibleTransactions}
           loading={loading}
           error={error}
         />
+
       </section>
 
-      {/* done */}
       {sendOpen && (
         <SendModal
           credential={credential}
           balanceAtomic={balanceAtomic}
           onClose={() => setSendOpen(false)}
-          onSuccess={handleSendSuccess} //retruns the result.. should be rendered on the screen
+          onSuccess={handleSendSuccess}
         />
       )}
 

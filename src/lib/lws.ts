@@ -17,8 +17,29 @@ export const LWS_URL = rawLwsUrl.endsWith('/')
 
 export type ProgressHandler = (message: string) => void
 
+export interface LwsSpentOutput {
+  amount?: string | number
+  key_image?: string
+  tx_pub_key?: string
+  out_index?: string | number
+  mixin?: string | number
+  mempool?: boolean
+}
+
 export interface LwsUnspentOutput {
   amount?: string | number
+  public_key?: string
+  index?: string | number
+  out_index?: string | number
+  global_index?: string | number
+  tx_id?: string | number
+  tx_hash?: string
+  tx_prefix_hash?: string
+  tx_pub_key?: string
+  timestamp?: string
+  height?: string | number
+  spend_key_images?: string[]
+  rct?: unknown
 }
 
 export interface LwsUnspentResponse {
@@ -39,11 +60,19 @@ export interface LwsAddressTx {
   coinbase?: boolean
   mempool?: boolean
   mixin?: string | number
+  spent_outputs?: LwsSpentOutput[]
 }
 
 export interface LwsAddressTxs {
   total_received?: string | number
+  scanned_height?: string | number
+  blockchain_height?: string | number
   transactions?: LwsAddressTx[]
+}
+
+export interface WalletActivity {
+  balanceAtomic: bigint
+  transactions: LwsAddressTx[]
 }
 
 export interface SendResult {
@@ -136,22 +165,148 @@ export function fetchAddressTxs(
   })
 }
 
-//todo : what is the responce
-export function balanceFromUnspent(
-  unspent: LwsUnspentResponse | null
-): bigint {
-  if (!unspent) {
-    return 0n
+function normalizeHex(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
+//it is the combination of public tx key and the output index 
+function outpointKey(
+  txPubKey: unknown,
+  outIndex: unknown
+): string | null {
+  const key = normalizeHex(txPubKey)
+  if (key.length === 0 || outIndex === undefined || outIndex === null) {
+    return null
   }
-  //checks
-  if (unspent.amount !== undefined && unspent.amount !== null) {
-    return parseAtomic(unspent.amount)
+  return `${key}:${String(outIndex).trim()}`
+}
+
+//  generates the outpoint and the keyimage for all the spent output from the tx 
+function collectSpentOutputs(transactions: LwsAddressTx[]): {
+  outpoints: Set<string>
+  keyImages: Set<string>
+} {
+
+  const outpoints = new Set<string>() //set of keys 
+  const keyImages = new Set<string>()//set the of spent output keyimags from the previous tx
+
+  for (const transaction of transactions) {
+    for (const spent of transaction.spent_outputs ?? []) {
+      const outpoint = outpointKey(spent.tx_pub_key, spent.out_index)
+      if (outpoint !== null) {
+        outpoints.add(outpoint)
+      }
+
+      const keyImage = normalizeHex(spent.key_image)
+      if (keyImage.length > 0) {
+        keyImages.add(keyImage)
+      }
+    }
   }
 
-  return (unspent.outputs ?? []).reduce(
-    (total, output) => total + parseAtomic(output.amount), //great
-    0n
+  return { outpoints, keyImages }
+}
+
+//done
+function isOutputSpent(
+
+  output: LwsUnspentOutput,
+  spent: { outpoints: Set<string>; keyImages: Set<string> }
+
+): boolean {
+  //get the outpoint key for the unspent outputs
+  const outpoint = outpointKey(
+    output.tx_pub_key,
+    output.index ?? output.out_index
   )
+
+  //check if the calculted outpoint of thr unspend matchs in the spent output that comes from the tx
+  if (outpoint !== null) {
+    return spent.outpoints.has(outpoint)
+  }
+  // also check if the keyimage matchs
+  return (output.spend_key_images ?? []).some(keyImage =>
+    spent.keyImages.has(normalizeHex(keyImage))
+  )
+}
+
+//done
+export function balanceFromUnspent(
+  unspent: LwsUnspentResponse | null,
+  transactions: LwsAddressTx[] = []
+): bigint {
+
+  const outputs = unspent?.outputs ?? []
+  if (outputs.length === 0) {
+    return 0n //done
+  }
+  const spent = collectSpentOutputs(transactions) //gets all the keyimage of spent outputs
+
+  return outputs.reduce((total, output) => {
+    // this function takes both the keyimage of the spent output and all the unspent outputs
+    if (isOutputSpent(output, spent)) {
+      return total // if it is spent dont include it in the total 
+    }
+    return total + parseAtomic(output.amount) // if not added it to the total
+  }, 0n)
+
+}
+
+//return the hight timestamp and the tx hash 
+function sortValue(transaction: LwsAddressTx): [number, number, number] {
+
+  const height = Number(transaction.height ?? 0)
+  const timestamp = Date.parse(transaction.timestamp ?? '')
+  const id = Number(transaction.id ?? 0)
+
+  return [
+    Number.isFinite(height) ? height : 0,
+    Number.isNaN(timestamp) ? 0 : timestamp,
+    Number.isFinite(id) ? id : 0
+  ]
+}
+
+//done
+export function sortTransactionsNewestFirst(
+  transactions: LwsAddressTx[]
+): LwsAddressTx[] {
+
+  return [...transactions].sort((left, right) => {
+    const leftValue = sortValue(left)
+    const rightValue = sortValue(right)
+
+    for (let index = 0; index < leftValue.length; index += 1) { //iterate 3 times
+
+      if (leftValue[index] !== rightValue[index]) {
+        return rightValue[index] - leftValue[index]
+      }
+
+    }
+
+    return 0
+  })
+}
+
+//done
+export async function fetchWalletActivity(
+  credential: WalletCredential,
+  options: { login?: boolean } = {}
+): Promise<WalletActivity> {
+  if (options.login !== false) {
+    await loginToLws(credential)
+  }
+
+  const [unspent, addressTxs] = await Promise.all([
+    fetchUnspent(credential),
+    fetchAddressTxs(credential)
+  ])
+
+  const transactions = addressTxs.transactions ?? []
+
+  return {
+    balanceAtomic: balanceFromUnspent(unspent, transactions),
+    transactions: sortTransactionsNewestFirst(transactions)
+  }
 }
 
 function lwsProxy(

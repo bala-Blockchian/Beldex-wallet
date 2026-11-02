@@ -12,7 +12,7 @@ interface TransactionListProps {
   error: string | null
 }
 
-type Direction = 'received' | 'sent' | 'self'
+type Direction = 'received' | 'sent'
 
 function classify(transaction: LwsAddressTx): {
   direction: Direction
@@ -20,23 +20,15 @@ function classify(transaction: LwsAddressTx): {
   amount: bigint
   sign: string
 } {
+
   const received = parseAtomic(transaction.total_received)
   const sent = parseAtomic(transaction.total_sent)
-
-  if (sent > 0n && received > 0n) {
-    return {
-      direction: 'self',
-      label: 'Self transfer',
-      amount: sent,
-      sign: ''
-    }
-  }
 
   if (sent > 0n) {
     return {
       direction: 'sent',
       label: 'Sent',
-      amount: sent,
+      amount: sent > received ? sent - received : sent, //amount of bdx received
       sign: '-'
     }
   }
@@ -54,6 +46,7 @@ export default function TransactionList({
   loading,
   error
 }: TransactionListProps) {
+
   if (loading && transactions.length === 0) {
     return <p className="muted-state">Loading transactions...</p>
   }
@@ -67,8 +60,11 @@ export default function TransactionList({
   }
 
   return (
+    
     <ul className="tx-list">
+
       {transactions.map((transaction, index) => {
+
         const { direction, label, amount, sign } = classify(transaction)
         const pending = transaction.mempool === true
         const key = transaction.hash ?? transaction.id ?? index
@@ -83,20 +79,22 @@ export default function TransactionList({
               <div className="tx-top">
                 <span className={`tx-direction ${direction}`}>{label}</span>
                 {pending && <span className="pending-pill">Pending</span>}
+                <span className={`tx-amount ${direction}`}>
+                  {sign}
+                  {atomicToBdx(amount)} BDX
+                </span>
               </div>
+              
               <span className="tx-meta">
                 {formatTimestamp(transaction.timestamp)}
                 {transaction.height !== undefined
                   ? ` · Height ${transaction.height}`
-                  : ''}
+                  : pending
+                    ? ' · Waiting for network'
+                    : ''}
               </span>
               <span className="tx-hash">{shortHash(transaction.hash)}</span>
             </div>
-
-            <span className={`tx-amount ${direction}`}>
-              {sign}
-              {atomicToBdx(amount)} BDX
-            </span>
           </li>
         )
       })}
