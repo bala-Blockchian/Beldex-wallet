@@ -8,13 +8,27 @@ const apiProxy = {
   }
 }
 
+const lwsProxy = {
+  '/lws': {
+    target: 'https://lwsapi.rpcnode.stream',
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/lws/, '')
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
-    proxy: apiProxy
+    proxy: {
+      ...apiProxy,
+      ...lwsProxy
+    }
   },
   preview: {
-    proxy: apiProxy
+    proxy: {
+      ...apiProxy,
+      ...lwsProxy
+    }
   }
 })
