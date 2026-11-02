@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//done
+model Wallet {
+  id         String            @id @default(cuid())
+  address    String            @unique
+  label      String
+  createdAt  DateTime          @default(now())
+  credential WalletCredential?
+
+  @@map("wallets")
+}
+
+//done
+model WalletCredential {
+  id          String   @id @default(cuid())
+  walletId    String   @unique
+  seedPhrase  String
+  secSpendKey String
+  secViewKey  String
+  pubSpendKey String
+  pubViewKey  String
+  address     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  //get the reference of the wallet model and set the onDelete to cascade so that when a wallet is deleted, the corresponding wallet credential is also deleted
+  wallet      Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("wallet_credentials")
+}
+
+enum OtpStatus {
+  PENDING
+  VERIFIED
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+//done
+model OtpVerification {
+  id        String    @id @default(cuid())
+  sender    String
+  receiver  String
+  amount    BigInt
+  otp       String //good 
+  status    OtpStatus @default(PENDING)
+  txHash    String?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([sender])
+  @@index([status])
+  @@index([createdAt])
+  @@map("otp_verifications")
+}

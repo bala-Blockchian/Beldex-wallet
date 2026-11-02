@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres-beldex
+    environment:
+      POSTGRES_USER: beldex
+      POSTGRES_PASSWORD: beldexpass
+      POSTGRES_DB: beldexdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - beldex_pgdata:/var/lib/postgresql/data
+
+volumes:
+  beldex_pgdata:
