@@ -15,6 +15,7 @@ export interface SavedWallet {
   id: string
   address: string
   label: string
+  email: string | null
   createdAt: string
   credential: WalletCredential | null
 }
@@ -23,33 +24,73 @@ interface WalletResponse {
   wallet: SavedWallet
 }
 
-interface ErrorResponse {
-  error?: string
+interface EmailResponse {
+  email: string | null
 }
 
-async function postJson(body: Record<string, unknown>): Promise<SavedWallet> {
+interface ErrorResponse {
+  error?: string
+  code?: string
+  retryAfter?: number
+}
 
-  const response = await fetch('/api/wallets', {
+async function postJson<T>(
+  path: string,
+  body: Record<string, unknown>
+): Promise<T> {
+  const response = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
-  }
-)
+  })
 
-  const data = (await response.json()) as WalletResponse & ErrorResponse
+  const data = (await response.json()) as T & ErrorResponse
 
   if (!response.ok) {
     throw new Error(data.error ?? `Request failed with HTTP ${response.status}`)
   }
 
-  return data.wallet //good
+  return data
 }
 
-//done
-export function createWallet(label: string): Promise<SavedWallet> {
-  return postJson({ mode: 'create', label }) //for the create wallet we just pass the label
+export async function createWallet(
+  label: string,
+  email: string
+): Promise<SavedWallet> {
+  
+  const data = await postJson<WalletResponse>('/api/wallets', {
+    mode: 'create',
+    label,
+    email
+  })
+
+  return data.wallet
 }
-//done
-export function importWallet(label: string, mnemonic: string): Promise<SavedWallet> {
-  return postJson({ mode: 'import', label, mnemonic }) //for the import wallet we pass the lable and the mnemonic
+
+export async function importWallet(
+  label: string,
+  email: string,
+  mnemonic: string
+): Promise<SavedWallet> {
+  const data = await postJson<WalletResponse>('/api/wallets', {
+    mode: 'import',
+    label,
+    email,
+    mnemonic
+  })
+
+  return data.wallet
+}
+
+export async function saveWalletEmail(
+  walletId: string,
+  viewKey: string,
+  email: string
+): Promise<string | null> {
+  const data = await postJson<EmailResponse>(
+    `/api/wallets/${encodeURIComponent(walletId)}/email`,
+    { email, viewKey }
+  )
+
+  return data.email
 }

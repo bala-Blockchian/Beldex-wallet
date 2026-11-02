@@ -7,6 +7,7 @@ type Mode = 'create' | 'import'
 export default function App() {
   const [mode, setMode] = useState<Mode | null>(null)
   const [label, setLabel] = useState('')
+  const [email, setEmail] = useState('')
   const [mnemonic, setMnemonic] = useState('')
   const [activeWallet, setActiveWallet] = useState<SavedWallet | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -20,6 +21,7 @@ export default function App() {
     setMode(nextMode)
     setError(null)
     setLabel('')
+    setEmail('')
     setMnemonic('')
   }
 
@@ -29,7 +31,15 @@ export default function App() {
     setActiveWallet(null)
     setError(null)
     setLabel('')
+    setEmail('')
     setMnemonic('')
+  }
+
+  //todo : check this why are we implementing this may be for updating the email
+  function handleEmailSaved(nextEmail: string) {
+    setActiveWallet(current =>
+      current ? { ...current, email: nextEmail } : current
+    )
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -45,6 +55,12 @@ export default function App() {
       return
     }
 
+    const trimmedEmail = email.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError('Enter a valid email address for transaction verification.')
+      return
+    }
+
     if (mode === 'import' && mnemonic.trim().length === 0) {
       setError('Paste the seed phrase to import.')
       return
@@ -56,16 +72,17 @@ export default function App() {
     try {
       const wallet =
         mode === 'create'
-          ? await createWallet(trimmedLabel)
-          : await importWallet(trimmedLabel, mnemonic)
+          ? await createWallet(trimmedLabel, trimmedEmail)
+          : await importWallet(trimmedLabel, trimmedEmail, mnemonic)
 
       if (!wallet.credential) {
         throw new Error('Wallet credentials were not returned by the server')
       }
 
-      setActiveWallet(wallet) //set the active wallet
+      setActiveWallet(wallet)
       setMnemonic('')
       setLabel('')
+      setEmail('')
 
       setMode(null)
     } catch (caught) {
@@ -84,6 +101,7 @@ export default function App() {
             wallet={activeWallet}
             credential={activeWallet.credential}
             onNewWallet={handleNewWallet}
+            onEmailSaved={handleEmailSaved}
           />
         </section>
       </main>
@@ -98,7 +116,8 @@ export default function App() {
           <h1>Wallet V1</h1>
           <p className="lede">
             Create a new twenty-five-word wallet or import an existing seed. Keys are derived by
-            the Beldex WASM bridge and saved to Postgres.
+            the Beldex WASM bridge and saved to Postgres. An email is required for send
+            verification.
           </p>
         </header>
 
@@ -138,6 +157,25 @@ export default function App() {
               autoComplete="off"
               disabled={loading}
             />
+
+            <label className="field-label" htmlFor="wallet-email">
+              Email for transaction verification
+            </label>
+            <input
+              id="wallet-email"
+              className="text-input"
+              type="email"
+              value={email}
+              onChange={event => setEmail(event.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+              inputMode="email"
+              spellCheck={false}
+              disabled={loading}
+            />
+            <p className="field-hint">
+              A one-time code will be sent to this email before each send.
+            </p>
 
             {mode === 'import' && (
               <>

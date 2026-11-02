@@ -9,11 +9,13 @@ datasource db {
 
 //done
 model Wallet {
-  id         String            @id @default(cuid())
-  address    String            @unique
-  label      String
-  createdAt  DateTime          @default(now())
-  credential WalletCredential?
+  id               String            @id @default(cuid())
+  address          String            @unique
+  label            String
+  email            String? //added newly
+  createdAt        DateTime          @default(now())
+  credential       WalletCredential?
+  otpVerifications OtpVerification[]
 
   @@map("wallets")
 }
@@ -47,18 +49,23 @@ enum OtpStatus {
 //done
 model OtpVerification {
   id        String    @id @default(cuid())
+  walletId  String?
   sender    String
   receiver  String
   amount    BigInt
-  otp       String //good 
+  otpHash   String    @map("otp")
+  attempts  Int       @default(0)
   status    OtpStatus @default(PENDING)
   txHash    String?
   expiresAt DateTime
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+  wallet    Wallet?   @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
   @@index([sender])
   @@index([status])
   @@index([createdAt])
+  @@index([walletId, status])
+  @@index([walletId, createdAt])
   @@map("otp_verifications")
 }

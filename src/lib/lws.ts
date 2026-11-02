@@ -258,9 +258,11 @@ function sortValue(transaction: LwsAddressTx): [number, number, number] {
   const height = Number(transaction.height ?? 0)
   const timestamp = Date.parse(transaction.timestamp ?? '')
   const id = Number(transaction.id ?? 0)
+  const unconfirmed =
+    transaction.mempool === true || !Number.isFinite(height) || height <= 0
 
   return [
-    Number.isFinite(height) ? height : 0,
+    unconfirmed ? Number.MAX_SAFE_INTEGER : height,
     Number.isNaN(timestamp) ? 0 : timestamp,
     Number.isFinite(id) ? id : 0
   ]

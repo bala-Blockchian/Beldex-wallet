@@ -15,22 +15,23 @@ interface DashboardProps {
   wallet: SavedWallet
   credential: WalletCredential
   onNewWallet: () => void
+  onEmailSaved: (email: string) => void
 }
 
 export default function Dashboard({
   wallet,
   credential,
-  onNewWallet
-
+  onNewWallet,
+  onEmailSaved
 }: DashboardProps) {
-  //done
+
   const [balanceAtomic, setBalanceAtomic] = useState<bigint | null>(null)
   const [transactions, setTransactions] = useState<LwsAddressTx[]>([])
   const [pendingTransactions, setPendingTransactions] = useState<
     LwsAddressTx[]
   >([])
 
-  const [loading, setLoading] = useState(true) // done
+  const [loading, setLoading] = useState(true) 
   const [error, setError] = useState<string | null>(null)
   const [sendOpen, setSendOpen] = useState(false)
   const [receiveOpen, setReceiveOpen] = useState(false)
@@ -38,7 +39,7 @@ export default function Dashboard({
 
   const loadActivity = useCallback(async () => {
     try {
-      const activity = await fetchWalletActivity(credential) //updates function
+      const activity = await fetchWalletActivity(credential)
 
       setBalanceAtomic(activity.balanceAtomic)
       setTransactions(activity.transactions)
@@ -51,7 +52,7 @@ export default function Dashboard({
   }, [credential])
 
   useEffect(() => {
-    void loadActivity() // oxlint-disable-line react/set-state-in-effect
+    void loadActivity() 
   }, [loadActivity])
 
   //continuesly updates the pending tx array
@@ -281,9 +282,11 @@ export default function Dashboard({
       {sendOpen && (
         <SendModal
           credential={credential}
+          walletEmail={wallet.email}
           balanceAtomic={balanceAtomic}
           onClose={() => setSendOpen(false)}
           onSuccess={handleSendSuccess}
+          onEmailSaved={onEmailSaved}
         />
       )}
 

@@ -639,6 +639,27 @@ button:focus-visible {
   color: #eef4ff;
 }
 
+.field-hint {
+  margin: -0.15rem 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.otp-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  text-align: center;
+}
+
+.resend-button {
+  width: 100%;
+  margin-top: 0.25rem;
+  text-align: center;
+}
+
 .progress {
   display: flex;
   align-items: center;
